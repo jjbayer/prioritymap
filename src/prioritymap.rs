@@ -28,7 +28,13 @@ where
 
     pub fn insert(&mut self, priority: P, key: K, value: V) {
         match self.map.entry(key.clone()) {
-            hash_map::Entry::Occupied(_) => todo!(),
+            hash_map::Entry::Occupied(e) => {
+                let position = *e.get();
+                let heap_element = &mut self.heap[*e.get()];
+                heap_element.value = value;
+                debug_assert!(&heap_element.key == e.key());
+                self.reprioritize_position(position, priority);
+            }
             hash_map::Entry::Vacant(e) => {
                 let position = self.heap.len();
                 e.insert(position);
@@ -74,8 +80,12 @@ where
         Some(entry.value)
     }
 
-    pub fn reprioritize(&mut self, key: &K, mut priority: P) -> Option<P> {
+    pub fn reprioritize(&mut self, key: &K, priority: P) -> Option<P> {
         let position = *self.map.get(&key)?;
+        self.reprioritize_position(position, priority)
+    }
+
+    fn reprioritize_position(&mut self, position: usize, mut priority: P) -> Option<P> {
         let target = &mut self.heap[position].priority;
         std::mem::swap(target, &mut priority);
         if *target > priority {
@@ -191,6 +201,20 @@ mod tests {
         map.reprioritize(&"b", 200);
 
         assert_eq!(map.pop(), Some("2"));
+        assert_eq!(map.pop(), Some("3"));
+        assert_eq!(map.pop(), Some("1"));
+    }
+
+    #[test]
+    fn replace() {
+        let mut map = PriorityMap::new();
+        map.insert(1, "a", "1");
+        map.insert(2, "b", "2");
+        map.insert(3, "c", "3");
+
+        map.insert(200, "b", "200");
+
+        assert_eq!(map.pop(), Some("200"));
         assert_eq!(map.pop(), Some("3"));
         assert_eq!(map.pop(), Some("1"));
     }
