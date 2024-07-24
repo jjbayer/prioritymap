@@ -1,11 +1,19 @@
 use std::collections::{hash_map, HashMap};
 
-pub struct PriorityMap<P, K: std::hash::Hash, V> {
+pub struct PriorityMap<P, K, V>
+where
+    K: std::hash::Hash,
+{
     heap: Vec<Entry<P, K, V>>,
     map: HashMap<K, usize>,
 }
 
-impl<P: PartialOrd + Copy, K: Eq + std::hash::Hash + Copy, V: Ord> PriorityMap<P, K, V> {
+impl<P, K, V> PriorityMap<P, K, V>
+where
+    P: PartialOrd + Clone,
+    K: Eq + std::hash::Hash + Clone,
+    V: Ord,
+{
     pub fn new() -> Self {
         Self {
             heap: vec![],
@@ -19,7 +27,7 @@ impl<P: PartialOrd + Copy, K: Eq + std::hash::Hash + Copy, V: Ord> PriorityMap<P
     }
 
     pub fn insert(&mut self, priority: P, key: K, value: V) {
-        match self.map.entry(key) {
+        match self.map.entry(key.clone()) {
             hash_map::Entry::Occupied(_) => todo!(),
             hash_map::Entry::Vacant(e) => {
                 let position = self.heap.len();
@@ -55,10 +63,10 @@ impl<P: PartialOrd + Copy, K: Eq + std::hash::Hash + Copy, V: Ord> PriorityMap<P
         Some(entry.value)
     }
 
-    pub fn remove(&mut self, key: K) -> Option<V> {
+    pub fn remove(&mut self, key: &K) -> Option<V> {
         let position = self.map.remove(&key)?;
         let entry = self.heap.swap_remove(position);
-        debug_assert!(key == entry.key);
+        debug_assert!(key == &entry.key);
 
         if self.heap.len() > position {
             self.sink_down(position);
@@ -66,17 +74,16 @@ impl<P: PartialOrd + Copy, K: Eq + std::hash::Hash + Copy, V: Ord> PriorityMap<P
         Some(entry.value)
     }
 
-    pub fn reprioritize(&mut self, key: K, priority: P) -> Option<P> {
+    pub fn reprioritize(&mut self, key: &K, mut priority: P) -> Option<P> {
         let position = *self.map.get(&key)?;
         let target = &mut self.heap[position].priority;
-        let old_priority = *target;
-        *target = priority;
-        if priority > old_priority {
+        std::mem::swap(target, &mut priority);
+        if *target > priority {
             self.swim_up(position);
         } else {
             self.sink_down(position);
         }
-        Some(old_priority)
+        Some(priority)
     }
 
     fn swim_up(&mut self, position: usize) -> usize {
@@ -88,16 +95,16 @@ impl<P: PartialOrd + Copy, K: Eq + std::hash::Hash + Copy, V: Ord> PriorityMap<P
     }
 
     fn sift<F: Fn(&Self, usize) -> Option<usize>>(&mut self, mut position: usize, f: F) -> usize {
-        let key = self.heap[position].key;
+        let original_key = self.heap[position].key.clone();
         while let Some(other) = f(self, position) {
-            let other_key = self.heap[other].key;
+            let other_key = self.heap[other].key.clone();
             self.heap.swap(other, position);
             debug_assert_eq!(self.map[&other_key], other);
-            self.map.insert(other_key, position);
+            self.map.insert(other_key.clone(), position);
 
             position = other;
         }
-        self.map.insert(key, position);
+        self.map.insert(original_key, position);
         position
     }
 
@@ -177,12 +184,11 @@ mod tests {
     #[test]
     fn reprioritize() {
         let mut map = PriorityMap::new();
-
         map.insert(1, "a", "1");
         map.insert(2, "b", "2");
         map.insert(3, "c", "3");
 
-        map.reprioritize("b", 200);
+        map.reprioritize(&"b", 200);
 
         assert_eq!(map.pop(), Some("2"));
         assert_eq!(map.pop(), Some("3"));
@@ -197,14 +203,14 @@ mod tests {
             ("c", "3", ["2", "1"]),
         ] {
             let mut map = PriorityMap::new();
-            assert!(map.remove(key).is_none());
+            assert!(map.remove(&key).is_none());
 
             map.insert(1, "a", "1");
             map.insert(2, "b", "2");
             map.insert(3, "c", "3");
 
-            assert_eq!(map.remove(key), Some(expected_value));
-            assert!(map.remove(key).is_none());
+            assert_eq!(map.remove(&key), Some(expected_value));
+            assert!(map.remove(&key).is_none());
 
             assert_eq!(map.pop(), Some(expected_order[0]));
             assert_eq!(map.pop(), Some(expected_order[1]));
